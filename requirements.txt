@@ -1,0 +1,8 @@
+natsort
+numpy
+opencv-python
+scipy
+tensorboard
+torch
+torchvision
+tqdm
