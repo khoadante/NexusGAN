@@ -69,12 +69,12 @@ in_channels = 3
 out_channels = 3
 upscale_factor = 4
 # Experiment name, easy to save weights and log files
-exp_name = "Nexus"
+exp_name = "NexusLite"
 
 if mode == "train_net":
     # Dataset address
-    train_image_dir = "datasets/DIV2K/Nexus/train"
-    valid_image_dir = "datasets/DIV2K/Nexus/valid"
+    train_image_dir = "datasets/SunHays80/Nexus/train"
+    valid_image_dir = "datasets/SunHays80/Nexus/valid"
     test_lr_image_dir = f"datasets/Set5/LRbicx{upscale_factor}"
     test_hr_image_dir = f"datasets/Set5/GTmod12"
 
@@ -98,13 +98,13 @@ if mode == "train_net":
 
 if mode == "train_gan":
     # Dataset address
-    train_image_dir = "datasets/DIV2K/Nexus/train"
-    valid_image_dir = "datasets/DIV2K/Nexus/valid"
+    train_image_dir = "datasets/SunHays80/Nexus/train"
+    valid_image_dir = "datasets/SunHays80/Nexus/valid"
     test_lr_image_dir = f"datasets/Set5/LRbicx{upscale_factor}"
     test_hr_image_dir = f"datasets/Set5/GTmod12"
 
     # Incremental training and migration training
-    resume = "results/Nexus/g_last.pth.tar"
+    resume = "results/NexusLite/g_last.pth.tar"
     resume_d = ""
     resume_g = ""
 
@@ -140,4 +140,4 @@ if mode == "test":
     hr_dir = f"datasets/Set14/GTmod12"
 
     # model_path = "results/pretrained_models/NexusGAN.pth.tar"
-    model_path = "results/Nexus/g_best.pth.tar"
+    model_path = "results/NexusLite/g_best.pth.tar"

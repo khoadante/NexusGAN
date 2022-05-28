@@ -1,7 +1,9 @@
 # Project stuff
-datasets/DIV2K
+datasets
 checkpoints
 results/test
+!datasets/Set5
+!datasets/Set14
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
