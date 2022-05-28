@@ -184,6 +184,9 @@ class Generator(nn.Module):
         # Output layer
         self.conv4 = nn.Conv2d(64, out_channels, (3, 3), (1, 1), (1, 1))
 
+        # Initialize neural network weights
+        self._initialize_weights()
+
     # The model should be defined in the Torch.script method.
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
         # If upscale_factor not equal 4, must use nn.PixelUnshuffle() ops

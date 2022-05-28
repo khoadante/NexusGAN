@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
+from torch.nn.utils import spectral_norm
 
 __all__ = ["ResidualDenseBlock", "ResidualResidualDenseBlock", "SeparableConv2d"]
 
@@ -98,3 +100,75 @@ class SeparableConv2d(nn.Module):
 
     def forward(self, x):
         return self.pointwise(self.depthwise(x))
+
+
+class AttentionBlock(nn.Module):
+    def __init__(self, x_channels, g_channels=256):
+        super(AttentionBlock, self).__init__()
+        self.W = nn.Sequential(
+            nn.Conv2d(x_channels,
+                      x_channels,
+                      kernel_size=1,
+                      stride=1,
+                      padding=0),
+            nn.BatchNorm2d(x_channels))
+        self.theta = nn.Conv2d(x_channels,
+                               x_channels,
+                               kernel_size=2,
+                               stride=2,
+                               padding=0,
+                               bias=False)
+
+        self.phi = nn.Conv2d(g_channels,
+                             x_channels,
+                             kernel_size=1,
+                             stride=1,
+                             padding=0,
+                             bias=True)
+        self.psi = nn.Conv2d(x_channels,
+                             out_channels=1,
+                             kernel_size=1,
+                             stride=1,
+                             padding=0,
+                             bias=True)
+
+    def forward(self, x, g):
+        input_size = x.size()
+        batch_size = input_size[0]
+        assert batch_size == g.size(0)
+
+        theta_x = self.theta(x)
+        theta_x_size = theta_x.size()
+        phi_g = F.interpolate(self.phi(g),
+                              size=theta_x_size[2:],
+                              mode='bilinear', align_corners=False)
+        f = F.relu(theta_x + phi_g, inplace=True)
+
+        sigm_psi_f = torch.sigmoid(self.psi(f))
+        sigm_psi_f = F.interpolate(
+            sigm_psi_f, size=input_size[2:], mode='bilinear', align_corners=False)
+
+        y = sigm_psi_f.expand_as(x) * x
+        W_y = self.W(y)
+        return W_y
+
+
+class ConcatenationBlock(nn.Module):
+    def __init__(self, dim_in, dim_out):
+        super(ConcatenationBlock, self).__init__()
+        self.convU = spectral_norm(
+            nn.Conv2d(dim_in, dim_out, 3, 1, 1, bias=False))
+
+    def forward(self, input_1, input_2):
+        # Upsampling
+        input_2 = F.interpolate(input_2, scale_factor=2,
+                                mode='bilinear', align_corners=False)
+
+        output_2 = F.leaky_relu(self.convU(
+            input_2), negative_slope=0.2, inplace=True)
+
+        offset = output_2.size()[2] - input_1.size()[2]
+        padding = 2 * [offset // 2, offset // 2]
+        output_1 = F.pad(input_1, padding)
+        y = torch.cat([output_1, output_2], 1)
+        return y
