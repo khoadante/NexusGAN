@@ -553,14 +553,6 @@ def train_nexusgan(
         # LR and HR crop the specified area respectively
         lr, hr = imgproc.random_crop(lr, hr, config.image_size, config.upscale_factor)
 
-        # Set the real sample label to 1, and the false sample label to 0
-        real_label = torch.full(
-            [lr.size(0), 1], 1.0, dtype=lr.dtype, device=config.device
-        )
-        fake_label = torch.full(
-            [lr.size(0), 1], 0.0, dtype=lr.dtype, device=config.device
-        )
-
         # Start training the generator model
         # During generator training, turn off discriminator backpropagation
         for d_parameters in discriminator.parameters():
