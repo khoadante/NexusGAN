@@ -18,23 +18,48 @@ class ResidualDenseBlock(nn.Module):
     def __init__(self, channels: int, growth_channels: int) -> None:
         super(ResidualDenseBlock, self).__init__()
         self.conv1x1 = SeparableConv2d(
-            channels + growth_channels * 0, growth_channels, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0), bias=False
+            channels + growth_channels * 0,
+            growth_channels,
+            kernel_size=(1, 1),
+            stride=(1, 1),
+            padding=(0, 0),
+            bias=False,
         )
 
         self.conv1 = SeparableConv2d(
-            channels + growth_channels * 0, growth_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+            channels + growth_channels * 0,
+            growth_channels,
+            kernel_size=(3, 3),
+            stride=(1, 1),
+            padding=(1, 1),
         )
         self.conv2 = SeparableConv2d(
-            channels + growth_channels * 1, growth_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+            channels + growth_channels * 1,
+            growth_channels,
+            kernel_size=(3, 3),
+            stride=(1, 1),
+            padding=(1, 1),
         )
         self.conv3 = SeparableConv2d(
-            channels + growth_channels * 2, growth_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+            channels + growth_channels * 2,
+            growth_channels,
+            kernel_size=(3, 3),
+            stride=(1, 1),
+            padding=(1, 1),
         )
         self.conv4 = SeparableConv2d(
-            channels + growth_channels * 3, growth_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+            channels + growth_channels * 3,
+            growth_channels,
+            kernel_size=(3, 3),
+            stride=(1, 1),
+            padding=(1, 1),
         )
         self.conv5 = SeparableConv2d(
-            channels + growth_channels * 4, channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+            channels + growth_channels * 4,
+            channels,
+            kernel_size=(3, 3),
+            stride=(1, 1),
+            padding=(1, 1),
         )
 
         self.leaky_relu = nn.LeakyReLU(0.2, True)
@@ -106,31 +131,19 @@ class AttentionBlock(nn.Module):
     def __init__(self, x_channels, g_channels=256):
         super(AttentionBlock, self).__init__()
         self.W = nn.Sequential(
-            nn.Conv2d(x_channels,
-                      x_channels,
-                      kernel_size=1,
-                      stride=1,
-                      padding=0),
-            nn.BatchNorm2d(x_channels))
-        self.theta = nn.Conv2d(x_channels,
-                               x_channels,
-                               kernel_size=2,
-                               stride=2,
-                               padding=0,
-                               bias=False)
+            SeparableConv2d(x_channels, x_channels, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(x_channels),
+        )
+        self.theta = SeparableConv2d(
+            x_channels, x_channels, kernel_size=2, stride=2, padding=0, bias=False
+        )
 
-        self.phi = nn.Conv2d(g_channels,
-                             x_channels,
-                             kernel_size=1,
-                             stride=1,
-                             padding=0,
-                             bias=True)
-        self.psi = nn.Conv2d(x_channels,
-                             out_channels=1,
-                             kernel_size=1,
-                             stride=1,
-                             padding=0,
-                             bias=True)
+        self.phi = SeparableConv2d(
+            g_channels, x_channels, kernel_size=1, stride=1, padding=0, bias=True
+        )
+        self.psi = SeparableConv2d(
+            x_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True
+        )
 
     def forward(self, x, g):
         input_size = x.size()
@@ -139,14 +152,15 @@ class AttentionBlock(nn.Module):
 
         theta_x = self.theta(x)
         theta_x_size = theta_x.size()
-        phi_g = F.interpolate(self.phi(g),
-                              size=theta_x_size[2:],
-                              mode='bilinear', align_corners=False)
+        phi_g = F.interpolate(
+            self.phi(g), size=theta_x_size[2:], mode="bilinear", align_corners=False
+        )
         f = F.relu(theta_x + phi_g, inplace=True)
 
         sigm_psi_f = torch.sigmoid(self.psi(f))
         sigm_psi_f = F.interpolate(
-            sigm_psi_f, size=input_size[2:], mode='bilinear', align_corners=False)
+            sigm_psi_f, size=input_size[2:], mode="bilinear", align_corners=False
+        )
 
         y = sigm_psi_f.expand_as(x) * x
         W_y = self.W(y)
@@ -156,16 +170,15 @@ class AttentionBlock(nn.Module):
 class ConcatenationBlock(nn.Module):
     def __init__(self, dim_in, dim_out):
         super(ConcatenationBlock, self).__init__()
-        self.convU = spectral_norm(
-            nn.Conv2d(dim_in, dim_out, 3, 1, 1, bias=False))
+        self.convU = SeparableConv2d(dim_in, dim_out, 3, 1, 1, bias=False)
 
     def forward(self, input_1, input_2):
         # Upsampling
-        input_2 = F.interpolate(input_2, scale_factor=2,
-                                mode='bilinear', align_corners=False)
+        input_2 = F.interpolate(
+            input_2, scale_factor=2, mode="bilinear", align_corners=False
+        )
 
-        output_2 = F.leaky_relu(self.convU(
-            input_2), negative_slope=0.2, inplace=True)
+        output_2 = F.leaky_relu(self.convU(input_2), negative_slope=0.2, inplace=True)
 
         offset = output_2.size()[2] - input_1.size()[2]
         padding = 2 * [offset // 2, offset // 2]

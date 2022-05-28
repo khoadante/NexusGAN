@@ -129,20 +129,16 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, in_channels: int = 3,  features=64) -> None:
         super(Discriminator, self).__init__()
-        self.conv0 = nn.Conv2d(in_channels, features,
+        self.conv0 = SeparableConv2d(in_channels, features,
                                kernel_size=3, stride=1, padding=1)
 
-        self.conv1 = spectral_norm(
-            nn.Conv2d(features, features * 2, 3, 2, 1, bias=False))
-        self.conv2 = spectral_norm(
-            nn.Conv2d(features * 2, features * 4, 3, 2, 1, bias=False))
+        self.conv1 = SeparableConv2d(features, features * 2, 3, 2, 1, bias=False)
+        self.conv2 = SeparableConv2d(features * 2, features * 4, 3, 2, 1, bias=False)
 
         # Center
-        self.conv3 = spectral_norm(
-            nn.Conv2d(features * 4, features * 8, 3, 2, 1, bias=False))
+        self.conv3 = SeparableConv2d(features * 4, features * 8, 3, 2, 1, bias=False)
 
-        self.gating = spectral_norm(
-            nn.Conv2d(features * 8, features * 4, 1, 1, 1, bias=False))
+        self.gating = SeparableConv2d(features * 8, features * 4, 1, 1, 1, bias=False)
 
         # attention Blocks
         self.attn_1 = AttentionBlock(x_channels=features * 4, g_channels=features * 4)
@@ -155,17 +151,14 @@ class Discriminator(nn.Module):
         self.cat_3 = ConcatenationBlock(dim_in=features * 2, dim_out=features)
 
         # upsample
-        self.conv4 = spectral_norm(
-            nn.Conv2d(features * 8, features * 4, 3, 1, 1, bias=False))
-        self.conv5 = spectral_norm(
-            nn.Conv2d(features * 4, features * 2, 3, 1, 1, bias=False))
-        self.conv6 = spectral_norm(
-            nn.Conv2d(features * 2, features, 3, 1, 1, bias=False))
+        self.conv4 = SeparableConv2d(features * 8, features * 4, 3, 1, 1, bias=False)
+        self.conv5 = SeparableConv2d(features * 4, features * 2, 3, 1, 1, bias=False)
+        self.conv6 = SeparableConv2d(features * 2, features, 3, 1, 1, bias=False)
 
         # extra
-        self.conv7 = spectral_norm(nn.Conv2d(features, features, 3, 1, 1, bias=False))
-        self.conv8 = spectral_norm(nn.Conv2d(features, features, 3, 1, 1, bias=False))
-        self.conv9 = nn.Conv2d(features, 1, 3, 1, 1)
+        self.conv7 = SeparableConv2d(features, features, 3, 1, 1, bias=False)
+        self.conv8 = SeparableConv2d(features, features, 3, 1, 1, bias=False)
+        self.conv9 = SeparableConv2d(features, 1, 3, 1, 1)
 
         # Initialize model weights.
         self._initialize_weights()
@@ -201,7 +194,7 @@ class Discriminator(nn.Module):
         out = F.leaky_relu(self.conv8(out), negative_slope=0.2, inplace=True)
         out = self.conv9(out)
 
-        return 
+        return out
 
     def _initialize_weights(self) -> None:
         for module in self.modules():
@@ -217,3 +210,30 @@ class Discriminator(nn.Module):
             elif isinstance(module, nn.Linear):
                 nn.init.normal_(module.weight, 0, 0.01)
                 nn.init.constant_(module.bias, 0)
+
+
+class MultiScaleDiscriminator(nn.Module):
+    def __init__(self, num_D=2):
+        super(MultiScaleDiscriminator, self).__init__()
+        self.num_D = num_D
+
+        for i in range(num_D):
+            netD = Discriminator()
+            setattr(self, 'layer' + str(i), netD)
+
+        self.downsample = nn.AvgPool2d(
+            4, stride=2, padding=[1, 1])
+
+    def singleD_forward(self, model, input):
+        return model(input)
+
+    def forward(self, input):
+        num_D = self.num_D
+        result = []
+        input_downsampled = input
+        for i in range(num_D):
+            model = getattr(self, 'layer' + str(num_D - 1 - i))
+            result.append(self.singleD_forward(model, input_downsampled))
+            if i != (num_D - 1):
+                input_downsampled = self.downsample(input_downsampled)
+        return result
