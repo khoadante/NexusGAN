@@ -14,7 +14,6 @@ from utils.train_models import train_nexusgan
 from utils.validate_models import validate_nexusgan
 from utils.image_metrics import NIQE
 
-from torch.utils.tensorboard import SummaryWriter
 import config
 
 
@@ -107,9 +106,6 @@ def main():
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
 
-    # Create training process log file
-    writer = SummaryWriter(os.path.join("checkpoints", "logs", config.exp_name))
-
     # Initialize the gradient scaler.
     scaler = amp.GradScaler()
 
@@ -137,13 +133,12 @@ def main():
             g_optimizer,
             epoch,
             scaler,
-            writer,
         )
         _ = validate_nexusgan(
-            generator, ema_model, valid_prefetcher, epoch, writer, niqe_model, "Valid"
+            generator, ema_model, valid_prefetcher, epoch, niqe_model, "Valid"
         )
         niqe = validate_nexusgan(
-            generator, ema_model, test_prefetcher, epoch, writer, niqe_model, "Test"
+            generator, ema_model, test_prefetcher, epoch, niqe_model, "Test"
         )
         print("\n")
 

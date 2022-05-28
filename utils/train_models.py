@@ -6,7 +6,6 @@ from torch import nn, optim
 from torch.cuda import amp
 from torch.nn import functional as F
 from classes.prefetchers import CUDAPrefetcher
-from torch.utils.tensorboard import SummaryWriter
 from networks.nexusgan.losses import ContentLoss, GANLoss
 from utils.info_meters import AverageMeter, ProgressMeter
 
@@ -22,7 +21,6 @@ def train_nexusnet(
     optimizer: optim.AdamW,
     epoch: int,
     scaler: amp.GradScaler,
-    writer: SummaryWriter,
 ) -> None:
     """Training main program
 
@@ -34,7 +32,6 @@ def train_nexusnet(
         optimizer (optim.Adam): optimizer for optimizing generator models in generative networks
         epoch (int): number of training epochs during training the generative network
         scaler (amp.GradScaler): Mixed precision training function
-        writer (SummaryWrite): log file management function
 
     """
     # Defining JPEG image manipulation methods
@@ -278,10 +275,6 @@ def train_nexusnet(
 
         # Record training log information
         if batch_index % config.print_frequency == 0:
-            # Writer Loss to file
-            writer.add_scalar(
-                "Train/Loss", loss.item(), batch_index + epoch * batches + 1
-            )
             progress.display(batch_index)
 
         # Preload the next batch of data
@@ -303,7 +296,6 @@ def train_nexusgan(
     g_optimizer: optim.Adam,
     epoch: int,
     scaler: amp.GradScaler,
-    writer: SummaryWriter,
 ) -> None:
     """Training main program
 
@@ -319,7 +311,6 @@ def train_nexusgan(
         g_optimizer (optim.Adam): an optimizer for optimizing generator models in adversarial networks
         epoch (int): number of training epochs during training the adversarial network
         scaler (amp.GradScaler): Mixed precision training function
-        writer (SummaryWrite): log file management function
 
     """
     # Defining JPEG image manipulation methods
@@ -633,14 +624,6 @@ def train_nexusgan(
 
         # Write the data during training to the training log file
         if batch_index % config.print_frequency == 0:
-            iters = batch_index + epoch * batches + 1
-            writer.add_scalar("Train/D_Loss", d_loss.item(), iters)
-            writer.add_scalar("Train/G_Loss", g_loss.item(), iters)
-            writer.add_scalar("Train/Pixel_Loss", pixel_loss.item(), iters)
-            writer.add_scalar("Train/Content_Loss", content_loss.item(), iters)
-            writer.add_scalar("Train/Adversarial_Loss", adversarial_loss.item(), iters)
-            writer.add_scalar("Train/D(HR)_Probability", d_hr_probability.item(), iters)
-            writer.add_scalar("Train/D(SR)_Probability", d_sr_probability.item(), iters)
             progress.display(batch_index)
 
         # Preload the next batch of data

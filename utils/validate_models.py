@@ -2,7 +2,6 @@ import time
 import torch
 from torch import nn
 from torch.cuda import amp
-from torch.utils.tensorboard import SummaryWriter
 from classes.prefetchers import CUDAPrefetcher
 from utils.info_meters import AverageMeter, ProgressMeter
 
@@ -14,7 +13,6 @@ def validate_nexusnet(
     ema_model: nn.Module,
     data_prefetcher: CUDAPrefetcher,
     epoch: int,
-    writer: SummaryWriter,
     niqe_model: nn.Module,
     mode: str,
 ) -> float:
@@ -25,7 +23,6 @@ def validate_nexusnet(
         ema_model (nn.Module): Exponential Moving Average Model
         data_prefetcher (CUDAPrefetcher): test dataset iterator
         epoch (int): number of test epochs during training of the adversarial network
-        writer (SummaryWriter): log file management function
         niqe_model (nn.Module): The model used to calculate the model NIQE metric
         mode (str): test validation dataset accuracy or test dataset accuracy
 
@@ -85,11 +82,6 @@ def validate_nexusnet(
 
     # Print average PSNR metrics
     progress.display_summary()
-
-    if mode == "Valid" or mode == "Test":
-        writer.add_scalar(f"{mode}/NIQE", niqe_metrics.avg, epoch + 1)
-    else:
-        raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
 
     return niqe_metrics.avg
 
@@ -99,7 +91,6 @@ def validate_nexusgan(
     ema_model: nn.Module,
     data_prefetcher: CUDAPrefetcher,
     epoch: int,
-    writer: SummaryWriter,
     niqe_model: nn.Module,
     mode: str,
 ) -> float:
@@ -110,7 +101,6 @@ def validate_nexusgan(
         ema_model (nn.Module): Exponential Moving Average Model
         data_prefetcher (CUDAPrefetcher): test dataset iterator
         epoch (int): number of test epochs during training of the adversarial network
-        writer (SummaryWriter): log file management function
         niqe_model (nn.Module): The model used to calculate the model NIQE metric
         mode (str): test validation dataset accuracy or test dataset accuracy
 
@@ -170,10 +160,5 @@ def validate_nexusgan(
 
     # Print average PSNR metrics
     progress.display_summary()
-
-    if mode == "Valid" or mode == "Test":
-        writer.add_scalar(f"{mode}/NIQE", niqe_metrics.avg, epoch + 1)
-    else:
-        raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
 
     return niqe_metrics.avg
