@@ -1,3 +1,5 @@
+ipykernel
+ipywidgets 
 natsort
 numpy
 opencv-python
@@ -5,4 +7,5 @@ scipy
 tensorboard
 torch
 torchvision
+torchinfo
 tqdm
