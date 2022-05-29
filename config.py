@@ -8,7 +8,7 @@ from torch.backends import cudnn
 mode = "train_net"
 
 image_size = 256
-batch_size = 16
+batch_size = 4
 
 degradation_model_parameters_dict = {
     "sinc_kernel_size": 21,

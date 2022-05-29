@@ -66,7 +66,7 @@ class Generator(nn.Module):
 
         # Feature extraction backbone network
         trunk = []
-        for _ in range(5):
+        for _ in range(23):
             trunk.append(ResidualResidualDenseBlock(64, 32))
         self.trunk = nn.Sequential(*trunk)
 
