@@ -2,12 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
-from networks.nexusgan.blocks import (
-    AttentionBlock,
-    ConcatenationBlock,
-    SeparableConv2d,
-    ResidualResidualDenseBlock,
-)
+from networks.nexusgan.blocks import ResidualResidualDenseBlock
 
 __all__ = ["EMA", "Discriminator", "Generator"]
 
