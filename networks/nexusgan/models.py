@@ -2,7 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
-from networks.nexusgan.blocks import AttentionBlock, ConcatenationBlock, SeparableConv2d, ResidualResidualDenseBlock
+from networks.nexusgan.blocks import (
+    AttentionBlock,
+    ConcatenationBlock,
+    SeparableConv2d,
+    ResidualResidualDenseBlock,
+)
 
 __all__ = ["EMA", "Discriminator", "Generator"]
 
@@ -43,9 +48,98 @@ class EMA(nn.Module):
                 param.data = self.backup[name]
 
 
+class Discriminator(nn.Module):
+    def __init__(self) -> None:
+        super(Discriminator, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, (3, 3), (1, 1), (1, 1))
+        self.down_block1 = nn.Sequential(
+            spectral_norm(nn.Conv2d(64, 128, (4, 4), (2, 2), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down_block2 = nn.Sequential(
+            spectral_norm(nn.Conv2d(128, 256, (4, 4), (2, 2), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down_block3 = nn.Sequential(
+            spectral_norm(nn.Conv2d(256, 512, (4, 4), (2, 2), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up_block1 = nn.Sequential(
+            spectral_norm(nn.Conv2d(512, 256, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up_block2 = nn.Sequential(
+            spectral_norm(nn.Conv2d(256, 128, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up_block3 = nn.Sequential(
+            spectral_norm(nn.Conv2d(128, 64, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.conv2 = spectral_norm(
+            nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1), bias=False)
+        )
+        self.conv3 = spectral_norm(
+            nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1), bias=False)
+        )
+        self.conv4 = nn.Conv2d(64, 1, (3, 3), (1, 1), (1, 1))
+
+        # Initialize model weights.
+        self._initialize_weights()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    # Support torch.script function
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out1 = self.conv1(x)
+
+        # Down-sampling
+        down1 = self.down_block1(out1)
+        down2 = self.down_block2(down1)
+        down3 = self.down_block3(down2)
+
+        # Up-sampling
+        down3 = F.interpolate(
+            down3, scale_factor=2, mode="bilinear", align_corners=False
+        )
+        up1 = self.up_block1(down3)
+
+        up1 = torch.add(up1, down2)
+        up1 = F.interpolate(up1, scale_factor=2, mode="bilinear", align_corners=False)
+        up2 = self.up_block2(up1)
+
+        up2 = torch.add(up2, down1)
+        up2 = F.interpolate(up2, scale_factor=2, mode="bilinear", align_corners=False)
+        up3 = self.up_block3(up2)
+
+        up3 = torch.add(up3, out1)
+
+        out = self.conv2(up3)
+        out = self.conv3(out)
+        out = self.conv4(out)
+
+        return out
+
+    def _initialize_weights(self) -> None:
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(
+                    module.weight, mode="fan_out", nonlinearity="leaky_relu"
+                )
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.BatchNorm2d):
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, 0, 0.01)
+                nn.init.constant_(module.bias, 0)
+
+
 class Generator(nn.Module):
     def __init__(
-        self, in_channels: int = 3, out_channels: int = 3, upscale_factor: int = 4
+        self, in_channels: int, out_channels: int, upscale_factor: int
     ) -> None:
         super(Generator, self).__init__()
         if upscale_factor == 2:
@@ -62,7 +156,7 @@ class Generator(nn.Module):
         self.downsampling = nn.PixelUnshuffle(downscale_factor)
 
         # The first layer of convolutional layer
-        self.conv1 = SeparableConv2d(in_channels, 64, (3, 3), (1, 1), (1, 1))
+        self.conv1 = nn.Conv2d(in_channels, 64, (3, 3), (1, 1), (1, 1))
 
         # Feature extraction backbone network
         trunk = []
@@ -71,30 +165,27 @@ class Generator(nn.Module):
         self.trunk = nn.Sequential(*trunk)
 
         # After the feature extraction network, reconnect a layer of convolutional blocks
-        self.conv2 = SeparableConv2d(64, 64, (3, 3), (1, 1), (1, 1))
+        self.conv2 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
 
         # Upsampling convolutional layer
         self.upsampling1 = nn.Sequential(
-            SeparableConv2d(64, 64, (3, 3), (1, 1), (1, 1)),
+            nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1)),
             nn.LeakyReLU(0.2, True),
         )
 
         self.upsampling2 = nn.Sequential(
-            SeparableConv2d(64, 64, (3, 3), (1, 1), (1, 1)),
+            nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1)),
             nn.LeakyReLU(0.2, True),
         )
 
         # Output layer
         self.conv3 = nn.Sequential(
-            SeparableConv2d(64, 64, (3, 3), (1, 1), (1, 1)),
+            nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1)),
             nn.LeakyReLU(0.2, True),
         )
 
         # Output layer
-        self.conv4 = SeparableConv2d(64, out_channels, (3, 3), (1, 1), (1, 1))
-
-        # Initialize neural network weights
-        self._initialize_weights()
+        self.conv4 = nn.Conv2d(64, out_channels, (3, 3), (1, 1), (1, 1))
 
     # The model should be defined in the Torch.script method.
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
@@ -124,116 +215,3 @@ class Generator(nn.Module):
                 module.weight.data *= 0.1
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
-
-
-class Discriminator(nn.Module):
-    def __init__(self, in_channels: int = 3,  features=64) -> None:
-        super(Discriminator, self).__init__()
-        self.conv0 = SeparableConv2d(in_channels, features,
-                               kernel_size=3, stride=1, padding=1)
-
-        self.conv1 = SeparableConv2d(features, features * 2, 3, 2, 1, bias=False)
-        self.conv2 = SeparableConv2d(features * 2, features * 4, 3, 2, 1, bias=False)
-
-        # Center
-        self.conv3 = SeparableConv2d(features * 4, features * 8, 3, 2, 1, bias=False)
-
-        self.gating = SeparableConv2d(features * 8, features * 4, 1, 1, 1, bias=False)
-
-        # attention Blocks
-        self.attn_1 = AttentionBlock(x_channels=features * 4, g_channels=features * 4)
-        self.attn_2 = AttentionBlock(x_channels=features * 2, g_channels=features * 4)
-        self.attn_3 = AttentionBlock(x_channels=features, g_channels=features * 4)
-
-        # Cat
-        self.cat_1 = ConcatenationBlock(dim_in=features * 8, dim_out=features * 4)
-        self.cat_2 = ConcatenationBlock(dim_in=features * 4, dim_out=features * 2)
-        self.cat_3 = ConcatenationBlock(dim_in=features * 2, dim_out=features)
-
-        # upsample
-        self.conv4 = SeparableConv2d(features * 8, features * 4, 3, 1, 1, bias=False)
-        self.conv5 = SeparableConv2d(features * 4, features * 2, 3, 1, 1, bias=False)
-        self.conv6 = SeparableConv2d(features * 2, features, 3, 1, 1, bias=False)
-
-        # extra
-        self.conv7 = SeparableConv2d(features, features, 3, 1, 1, bias=False)
-        self.conv8 = SeparableConv2d(features, features, 3, 1, 1, bias=False)
-        self.conv9 = SeparableConv2d(features, 1, 3, 1, 1)
-
-        # Initialize model weights.
-        self._initialize_weights()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self._forward_impl(x)
-
-    # Support torch.script function
-    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
-        x0 = F.leaky_relu(self.conv0(x), negative_slope=0.2, inplace=True)
-        x1 = F.leaky_relu(self.conv1(x0), negative_slope=0.2, inplace=True)
-        x2 = F.leaky_relu(self.conv2(x1), negative_slope=0.2, inplace=True)
-        x3 = F.leaky_relu(self.conv3(x2), negative_slope=0.2, inplace=True)
-
-        gated = F.leaky_relu(self.gating(
-            x3), negative_slope=0.2, inplace=True)
-
-        # Attention
-        attn1 = self.attn_1(x2, gated)
-        attn2 = self.attn_2(x1, gated)
-        attn3 = self.attn_3(x0, gated)
-
-        # upsample
-        x3 = self.cat_1(attn1, x3)
-        x4 = F.leaky_relu(self.conv4(x3), negative_slope=0.2, inplace=True)
-        x4 = self.cat_2(attn2, x4)
-        x5 = F.leaky_relu(self.conv5(x4), negative_slope=0.2, inplace=True)
-        x5 = self.cat_3(attn3, x5)
-        x6 = F.leaky_relu(self.conv6(x5), negative_slope=0.2, inplace=True)
-
-        # extra
-        out = F.leaky_relu(self.conv7(x6), negative_slope=0.2, inplace=True)
-        out = F.leaky_relu(self.conv8(out), negative_slope=0.2, inplace=True)
-        out = self.conv9(out)
-
-        return out
-
-    def _initialize_weights(self) -> None:
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    module.weight, mode="fan_out", nonlinearity="leaky_relu"
-                )
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.BatchNorm2d):
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, 0, 0.01)
-                nn.init.constant_(module.bias, 0)
-
-
-class MultiScaleDiscriminator(nn.Module):
-    def __init__(self, num_D=2):
-        super(MultiScaleDiscriminator, self).__init__()
-        self.num_D = num_D
-
-        for i in range(num_D):
-            netD = Discriminator()
-            setattr(self, 'layer' + str(i), netD)
-
-        self.downsample = nn.AvgPool2d(
-            4, stride=2, padding=[1, 1])
-
-    def singleD_forward(self, model, input):
-        return model(input)
-
-    def forward(self, input):
-        num_D = self.num_D
-        result = []
-        input_downsampled = input
-        for i in range(num_D):
-            model = getattr(self, 'layer' + str(num_D - 1 - i))
-            result.append(self.singleD_forward(model, input_downsampled))
-            if i != (num_D - 1):
-                input_downsampled = self.downsample(input_downsampled)
-        return result

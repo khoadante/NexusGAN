@@ -13,12 +13,10 @@ __all__ = ["ContentLoss", "GANLoss"]
 class ContentLoss(nn.Module):
     """Constructs a content loss function based on the VGG19 network.
     Using high-level feature mapping layers from the latter layers will focus more on the texture content of the image.
-
     Paper reference list:
         -`Photo-Realistic Single Image Super-Resolution Using a Generative Adversarial Network <https://arxiv.org/pdf/1609.04802.pdf>` paper.
         -`ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks                    <https://arxiv.org/pdf/1809.00219.pdf>` paper.
         -`Perceptual Extreme Super Resolution Network with Receptive Field Block               <https://arxiv.org/pdf/2005.12597.pdf>` paper.
-
     """
 
     def __init__(
