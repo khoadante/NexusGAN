@@ -5,6 +5,8 @@ import torch
 from natsort import natsorted
 
 import config
+
+import numpy as np
 from networks.nexusgan.models import Generator
 from utils.image_metrics import NIQE
 import utils.image_processing as imgproc
@@ -44,6 +46,11 @@ def main() -> None:
     # Get the number of test image files.
     total_files = len(file_names)
 
+    # INIT LOGGERS
+    starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    repetitions = total_files
+    timings=np.zeros((repetitions,1))
+
     for index in range(total_files):
         lr_image_path = os.path.join(config.lr_dir, file_names[index])
         sr_image_path = os.path.join(config.sr_dir, file_names[index])
@@ -63,7 +70,15 @@ def main() -> None:
 
         # Only reconstruct the Y channel image data.
         with torch.no_grad():
+            starter.record()
+
             sr_tensor = model(lr_tensor)
+
+            ender.record()
+            # WAIT FOR GPU SYNC
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender)
+            timings[index] = curr_time
 
         # Save image
         sr_image = imgproc.tensor2image(sr_tensor, range_norm=False, half=True)
@@ -79,6 +94,8 @@ def main() -> None:
     avg_niqe = 100 if niqe_metrics / total_files > 100 else niqe_metrics / total_files
 
     print(f"NIQE: {avg_niqe:4.2f} 100u")
+    mean_syn = np.sum(timings) / repetitions
+    print(mean_syn)
 
 
 if __name__ == "__main__":
