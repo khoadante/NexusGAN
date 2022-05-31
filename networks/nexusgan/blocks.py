@@ -1,156 +1,84 @@
+from tokenize import group
 import torch
 from torch import nn
+from torch.nn import init
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
-__all__ = ["ResidualDenseBlock", "ResidualResidualDenseBlock", "SeparableConv2d"]
 
+class US(nn.Module):
+    def __init__(self, num_feat, scale):
+        super(US, self).__init__()
+        self.scale = scale
+        self.conv1 = nn.Conv2d(num_feat, num_feat, 1)
+        # plugin pixel attention
+        self.pa_conv = nn.Conv2d(num_feat, num_feat, 1)
+        self.pa_sigmoid = nn.Sigmoid()
+        # separable conv
+        self.sep_conv1_ = nn.Conv2d(num_feat, num_feat, 3, 1, 1, groups=num_feat)
+        self.sep_conv1 = nn.Conv2d(num_feat, num_feat, 1)
 
-class ResidualDenseBlock(nn.Module):
-    """Achieves densely connected convolutional layers.
-    `Densely Connected Convolutional Networks <https://arxiv.org/pdf/1608.06993v5.pdf>` paper.
-
-    Args:
-        channels (int): The number of channels in the input image.
-        growth_channels (int): The number of channels that increase in each layer of convolution.
-    """
-
-    def __init__(self, channels: int, growth_channels: int) -> None:
-        super(ResidualDenseBlock, self).__init__()
-        self.conv1x1 = SeparableConv2d(
-            channels + growth_channels * 0,
-            growth_channels,
-            kernel_size=(1, 1),
-            stride=(1, 1),
-            padding=(0, 0),
-            bias=False,
-        )
-
-        self.conv1 = SeparableConv2d(
-            channels + growth_channels * 0,
-            growth_channels,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            padding=(1, 1),
-        )
-        self.conv2 = SeparableConv2d(
-            channels + growth_channels * 1,
-            growth_channels,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            padding=(1, 1),
-        )
-        self.conv3 = SeparableConv2d(
-            channels + growth_channels * 2,
-            growth_channels,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            padding=(1, 1),
-        )
-        self.conv4 = SeparableConv2d(
-            channels + growth_channels * 3,
-            growth_channels,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            padding=(1, 1),
-        )
-        self.conv5 = SeparableConv2d(
-            channels + growth_channels * 4,
-            channels,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            padding=(1, 1),
-        )
-
-        self.leaky_relu = nn.LeakyReLU(0.2, True)
-        self.identity = nn.Identity()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        identity = x
-
-        out1 = self.leaky_relu(self.conv1(x))
-        out2 = self.leaky_relu(self.conv2(torch.cat([x, out1], 1)))
-        out2 = out2 + self.conv1x1(x)
-        out3 = self.leaky_relu(self.conv3(torch.cat([x, out1, out2], 1)))
-        out4 = self.leaky_relu(self.conv4(torch.cat([x, out1, out2, out3], 1)))
-        out4 = out4 + out2
-        out5 = self.identity(self.conv5(torch.cat([x, out1, out2, out3, out4], 1)))
-        out = torch.mul(out5, 0.2)
-        out = torch.add(out, identity)
-
-        return out
-
-
-class ResidualResidualDenseBlock(nn.Module):
-    """Multi-layer residual dense convolution block.
-
-    Args:
-        channels (int): The number of channels in the input image.
-        growth_channels (int): The number of channels that increase in each layer of convolution.
-    """
-
-    def __init__(self, channels: int, growth_channels: int) -> None:
-        super(ResidualResidualDenseBlock, self).__init__()
-        self.rdb1 = ResidualDenseBlock(channels, growth_channels)
-        self.rdb2 = ResidualDenseBlock(channels, growth_channels)
-        self.rdb3 = ResidualDenseBlock(channels, growth_channels)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        identity = x
-
-        out = self.rdb1(x)
-        out = self.rdb2(out)
-        out = self.rdb3(out)
-        out = torch.mul(out, 0.2)
-        out = torch.add(out, identity)
-
-        return out
-
-
-class SeparableConv2d(nn.Module):
-    def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=1, bias=True
-    ):
-        super(SeparableConv2d, self).__init__()
-        self.depthwise = nn.Conv2d(
-            in_channels,
-            in_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            groups=in_channels,
-            bias=bias,
-            padding=padding,
-        )
-        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2)
 
     def forward(self, x):
-        return self.pointwise(self.depthwise(x))
+        x_ = self.conv1(F.interpolate(x, scale_factor=self.scale, mode="nearest"))
+        x_ = self.lrelu(x_)
+        z = self.pa_conv(x_)
+        z = self.pa_sigmoid(z)
+        z = torch.mul(x_, z) + x_
+        z = self.sep_conv1_(self.sep_conv1(z))
+        out = self.lrelu(z)
+        return out
 
 
-class AttentionBlock(nn.Module):
+class RPA(nn.Module):
+    def __init__(self, num_feat):
+        super(RPA, self).__init__()
+        self.conv1 = nn.Conv2d(num_feat, num_feat * 2, 1)
+        self.conv2 = nn.Conv2d(num_feat * 2, num_feat * 4, 1)
+        self.sep_conv1_ = nn.Conv2d(
+            num_feat * 4, num_feat * 4, 3, 1, 1, groups=num_feat * 4
+        )
+        self.sep_conv1 = nn.Conv2d(num_feat * 4, num_feat, 1)
+        self.sep_conv2_ = nn.Conv2d(num_feat, num_feat, 3, 1, 1, groups=num_feat)
+        self.sep_conv2 = nn.Conv2d(num_feat, num_feat, 1)
+        self.sigmoid = nn.Sigmoid()
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2)
+
+    def forward(self, x):
+        z = self.conv1(x)
+        z = self.lrelu(z)
+        z = self.conv2(z)
+        z = self.lrelu(z)
+        z = self.sep_conv1(self.sep_conv1_(z))
+        z = self.sigmoid(z)
+        z = x * z + x
+        z = self.sep_conv2(self.sep_conv2_(z))
+        out = self.lrelu(z)
+        return out
+
+
+class add_attn(nn.Module):
     def __init__(self, x_channels, g_channels=256):
-        super(AttentionBlock, self).__init__()
+        super(add_attn, self).__init__()
         self.W = nn.Sequential(
-            SeparableConv2d(x_channels, x_channels, kernel_size=1, stride=1, padding=0),
+            nn.Conv2d(x_channels, x_channels, 1, 1, 0, bias=False),
             nn.BatchNorm2d(x_channels),
         )
-        self.theta = SeparableConv2d(
-            x_channels, x_channels, kernel_size=2, stride=2, padding=0, bias=False
+        self.theta_ = nn.Conv2d(
+            x_channels, x_channels, 2, 2, 0, groups=x_channels, bias=False
         )
+        self.theta = nn.Conv2d(x_channels, x_channels, 1, bias=False)
 
-        self.phi = SeparableConv2d(
-            g_channels, x_channels, kernel_size=1, stride=1, padding=0, bias=True
-        )
-        self.psi = SeparableConv2d(
-            x_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True
-        )
+        self.phi = nn.Conv2d(g_channels, x_channels, 1, 1, 0)
+        self.psi = nn.Conv2d(x_channels, 1, 1, 1, 0)
 
     def forward(self, x, g):
         input_size = x.size()
         batch_size = input_size[0]
         assert batch_size == g.size(0)
 
-        theta_x = self.theta(x)
+        theta_x = self.theta(self.theta_(x))
         theta_x_size = theta_x.size()
         phi_g = F.interpolate(
             self.phi(g), size=theta_x_size[2:], mode="bilinear", align_corners=False
@@ -167,10 +95,12 @@ class AttentionBlock(nn.Module):
         return W_y
 
 
-class ConcatenationBlock(nn.Module):
+class unetCat(nn.Module):
     def __init__(self, dim_in, dim_out):
-        super(ConcatenationBlock, self).__init__()
-        self.convU = SeparableConv2d(dim_in, dim_out, 3, 1, 1, bias=False)
+        super(unetCat, self).__init__()
+        norm = spectral_norm
+        self.sep_conv_ = nn.Conv2d(dim_in, dim_in, 3, 1, 1, groups=dim_in, bias=False)
+        self.sep_conv = norm(nn.Conv2d(dim_in, dim_out, 1, bias=False))
 
     def forward(self, input_1, input_2):
         # Upsampling
@@ -178,7 +108,9 @@ class ConcatenationBlock(nn.Module):
             input_2, scale_factor=2, mode="bilinear", align_corners=False
         )
 
-        output_2 = F.leaky_relu(self.convU(input_2), negative_slope=0.2, inplace=True)
+        output_2 = F.leaky_relu(
+            self.sep_conv(self.sep_conv_(input_2)), negative_slope=0.2
+        )
 
         offset = output_2.size()[2] - input_1.size()[2]
         padding = 2 * [offset // 2, offset // 2]

@@ -8,7 +8,7 @@ from torch.backends import cudnn
 mode = "train_net"
 
 image_size = 256
-batch_size = 16
+batch_size = 4
 
 degradation_model_parameters_dict = {
     "sinc_kernel_size": 21,
@@ -73,8 +73,8 @@ exp_name = "Nexus"
 
 if mode == "train_net":
     # Dataset address
-    train_image_dir = "datasets/DIV2K/Nexus/train"
-    valid_image_dir = "datasets/DIV2K/Nexus/valid"
+    train_image_dir = "datasets/DIV2K/Nexus/train_lite"
+    valid_image_dir = "datasets/DIV2K/Nexus/valid_lite"
     test_lr_image_dir = f"datasets/Set5/LRbicx{upscale_factor}"
     test_hr_image_dir = f"datasets/Set5/GTmod12"
 
@@ -98,8 +98,8 @@ if mode == "train_net":
 
 if mode == "train_gan":
     # Dataset address
-    train_image_dir = "datasets/DIV2K/Nexus/train"
-    valid_image_dir = "datasets/DIV2K/Nexus/valid"
+    train_image_dir = "datasets/DIV2K/Nexus/train_lite"
+    valid_image_dir = "datasets/DIV2K/Nexus/valid_lite"
     test_lr_image_dir = f"datasets/Set5/LRbicx{upscale_factor}"
     test_hr_image_dir = f"datasets/Set5/GTmod12"
 
