@@ -2,7 +2,7 @@ ssh-keygen -f "/home/khoa/.ssh/known_hosts" -R "cloud.server.ip.address"
 
 nvidia-smi
 
-git clone -b lite https://github.com/khoadante/NexusGAN.git
+git clone -b attention https://github.com/khoadante/NexusGAN.git
 cd NexusGAN/
 
 python setup.py

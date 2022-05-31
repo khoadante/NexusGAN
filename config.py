@@ -5,10 +5,10 @@ import torch
 from torch.backends import cudnn
 
 # Current configuration parameter method
-mode = "test"
+mode = "train_nexusnet"
 
 image_size = 256
-batch_size = 2
+batch_size = 8
 
 degradation_model_parameters_dict = {
     "sinc_kernel_size": 21,
@@ -96,7 +96,7 @@ if mode == "train_nexusnet":
     # How many iterations to print the training result
     print_frequency = 1
 
-if mode == "train_nexusgan":
+if mode == "train_nexusnet":
     # Dataset address
     train_image_dir = "datasets/SunHays80/Nexus/train"
     valid_image_dir = "datasets/SunHays80/Nexus/valid"
@@ -104,9 +104,11 @@ if mode == "train_nexusgan":
     test_hr_image_dir = f"datasets/Set5/GTmod12"
 
     # Incremental training and migration training
-    resume = "results/NexusLite/g_best.pth.tar"
-    resume_d = "results/NexusLite/d_last.pth.tar"
-    resume_g = "results/NexusLite/d_last.pth.tar"
+    resume = ""
+    # resume_d = "results/NexusLite/d_last.pth.tar"
+    resume_d = ""
+    # resume_g = "results/NexusLite/d_last.pth.tar"
+    resume_g = ""
 
     # Total num epochs
     epochs = 50
